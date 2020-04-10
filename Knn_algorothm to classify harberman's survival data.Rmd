@@ -1,0 +1,385 @@
+---
+title: "Using k-NN Algorithm to classify Habermans Survival Data---classification"
+output:
+  word_document: default
+  html_notebook: default
+---
+KNN-Algorithm:The k-NN algorithm  uses information about an example's k-nearest neighbors to classify unlabeled examples.The letter k is a variable term implying that any number of nearest neighbors could be used.After choosing k, the algorithm requires a training dataset made up of examples that have been classified into several categories, as labeled by a nominal variable. Then, for each unlabeled record in the test dataset, k-NN identifies k records in the training data that are the "nearest" in similarity. The unlabeled test instance is assigned the class of the majority of the k nearest neighbors. 
+For my project ,I used  k-NN algorithm to classify Haberman's survival status as class attributes either 1 or 2 which are based on  age of patients at time of operation, Patient's year of operation and Number of positive axillary nodes detected.
+
+# Step 1: Collecting Data ---- 
+
+I will utilize Haberman's Survival Dataset from the UCI Machine Learning Repository at http://archive.ics.uci.edu/ml. 
+This dataset  contains cases from a study that was conducted between 1958 and 1970 at the University of Chicago's Billings Hospital on the survival of patients who had undergone surgery for breast cancer.
+## description of variables
+Haberman's Survival Dataset includes 306 examples of surgery patients, each with 4 features.The survival status is coded as 1 for patient survived 5 years or longer and 2 for patients died within 5 years.The other 3 numeric features are :
+1. Age of patient at time of operation (numerical) 
+2. Patient's year of operation (year - 1900, numerical) 
+3. Number of positive axillary nodes detected (numerical)
+4. Survival status (class attribute) 
+-- 1 = the patient survived 5 years or longer 
+-- 2 = the patient died within 5 year
+
+;
+
+## Step 2: Exploring and preparing the data ---- 
+## import the CSV file
+```{r}
+
+habermans_survival <- read.csv("C:\\Users\\Omar\\Documents\\6620\\habermans_survival_data.csv", stringsAsFactors = FALSE)
+```
+
+I will begin by importing the CSV data file to RStudio using by read .csv command .
+
+## examine the structure of the habermans_survival data frame
+```{r}
+
+str(habermans_survival)
+```
+
+Using the str(habermans_survival) command, I can confirm that the data is structured with 306 examples and 4 features as I expected .The several lines of output are as above .
+
+##table of survival.status
+```{r}
+
+table(habermans_survival$Survival.status)
+```
+
+The next variable, Survival.status, is of particular interest as it is the outcome I
+hope to predict. This feature indicates whether the example is from alive
+or dead patients. The table() output indicates that 225 patients are alive
+while 81 are dead.
+
+##recode Survival.status as a factor
+```{r}
+
+habermans_survival$Survival.status <- factor(habermans_survival$Survival.status, levels = c("1", "2"),
+                         labels = c("Alive", "Dead"))
+```
+
+Many R machine learning classifiers require that the target feature is coded as a
+factor, so I will need to recode the Survival.status variable. I will also take this
+opportunity to give the "1" and "2" values more informative labels using the
+labels parameter.
+
+
+# table or proportions with more informative labels
+```{r}
+
+round(prop.table(table(habermans_survival$Survival.status)) * 100, digits = 2)
+
+```
+
+Now, when we look at the prop.table() output, we notice that the values have
+been labeled Alive and Dead with 73.53 percent and 26.47 percent of the patients, respectively;
+In order to examine that the data needs to be nomalized or standardized ,I used summary function .
+
+
+
+# summarize three numeric features
+```{r}
+summary(habermans_survival[c("Age", "Operation.year", "Number.of.positive.axillary.nodes.detected")])
+```
+The remaining 3 features are all numeric,but I got some problematic issues about the values . Because the distance calculation for k-NN is heavily dependent upon the measurement scale of the input features.Since the max value of Number.of.positive.axillary.nodes.detected is much higher than the mean and it would affect the distance calculation .so I need to  apply normalization to rescale the features to a standard range of values .
+
+
+# create normalization function
+```{r}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+```
+
+Transformation - normalizing numeric data
+To normalize these features,I need to create a normalize() function in R. This function takes a vector x of numeric values, and for each value in x, subtracts the
+minimum value in x and divides by the range of values in x. Finally, the resulting
+vector is returned. The code for this function is as above ;
+
+# normalize the habermans_survival data
+```{r}
+habermans_survival_n <- as.data.frame(lapply(habermans_survival[1:3], normalize))
+
+```
+I applied the normalize() function to the 3 numeric features in my data frame.after applying normalization function , the features are normalized with values ranging from 0 to 1 .
+
+# confirm that normalization worked
+```{r}
+
+summary(habermans_survival_n$Age )
+```
+
+To confirm that the transformation was applied correctly, I used summary ()function to look at Age  variable's summary statistics .
+
+```{r}
+summary(habermans_survival_n$Operation.year)
+```
+
+Here's the Operation.year's summary statistics .Ranges from min as 0.0000 and max as 1.0000 . 
+
+```{r}
+summary(habermans_survival_n$Number.of.positive.axillary.nodes.detected)
+```
+
+Number.of.positive.axillary.nodes.detected is also listed above . Mean as 0.01923 and median as 0.07692 .
+
+# create training and test data
+```{r}
+habermans_survival_train <- habermans_survival_n[1:206, ]
+habermans_survival_test <- habermans_survival_n[207:306, ]
+```
+Data preparation - creating training and test datasets
+I divided my habermans_survival dataset into two portions: a training dataset that will be used to build the k-NN model and a test dataset that will be used to estimate the predictive accuracy of the model. I will use the first 206 records for the training dataset and the remaining 100 to simulate new patients.
+
+# create labels for training and test data
+```{r}
+habermans_survival_train_labels <- habermans_survival[1:206, 4]
+habermans_survival_test_labels <- habermans_survival[207:306, 4]
+```
+For training the k-NN model, we will need to store  the survival status  as a  factor vectors, split between the training and test datasets.
+
+
+```{r}
+summary(habermans_survival_train_labels)
+```
+Using summary () function ,I checked my train dataset whether labeled correctly or not . I set 206 as train dataset previously .By getting 150 Alive and 56 Dead patients , I confirmed my creating lables was correct . 
+
+# visualize the data using labels
+```{r}
+
+plot(habermans_survival$Age,habermans_survival$Number.of.positive.axillary.nodes.detected, 
+     main = 'Scatterplot',
+     xlab = 'Age',
+     ylab = 'Number.of.positive.axillary.nodes.detected')
+
+```
+
+
+```{r}
+pairs(~Age+Operation.year+Number.of.positive.axillary.nodes.detected, 
+      data = habermans_survival,
+      main = 'Scaterplot of many variables')
+```
+
+
+```{r}
+library(car)
+
+scatterplot(Age ~ Number.of.positive.axillary.nodes.detected |Survival.status, data = habermans_survival,
+     main = 'Scatterplot',
+     xlab = 'Age',
+     ylab = 'Number.of.positive.axillary.nodes.detected')
+scatterplotMatrix(~Age+Operation.year+Number.of.positive.axillary.nodes.detected| Survival.status, data = habermans_survival)
+```
+
+
+## Step 3: Training a model on the data ----
+
+# load the "class" library
+```{r}
+
+library(class)
+
+habermans_survival_test_pred <- knn(train =habermans_survival_train, test = habermans_survival_test,
+                      cl =habermans_survival_train_labels, k =13)
+
+head(habermans_survival_test)
+head(habermans_survival_test_pred)
+```
+For the k-NN algorithm, the training phase actually involves no model building; the process of training a lazy learner like k-NN simply involves storing the input data in a structured format.
+To classify our test instances, we will use a k-NN implementation from the class package, which provides a set of basic R functions for classification.
+The knn() function in the class package provides a standard, classic implementation of the k-NN algorithm. 
+For each instance in the test data, the function will identify the k-Nearest Neighbors, using Euclidean distance, where k is a user-specified number. The test instance is classified by taking a "vote" among the k-Nearest Neighbors specifically, this involves assigning the class of the majority of the k neighbors. A tie vote is broken at random.
+The knn() function returns the predicted class using the training and the test datasets and the specified k value .As our training data includes 206 instances, we might try k = 13, an odd number roughly equal to the square root of 206. With a two-category outcome, using an odd number eliminates the chance of ending with a tie vote.
+Finally we  used the knn() function to classify the test data and this function returned  a factor vector of predicted labels as the levels of alive and dead  for each of the examples in the test dataset, which we have assigned to Habermans_test_pred.
+
+
+## Step 4: Evaluating model performance ----
+
+# load the "gmodels" library
+```{r}
+library(gmodels)
+# Create the cross tabulation of predicted vs. actual
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred,
+           prop.chisq = FALSE)
+```
+
+The next step of the process is to evaluate how well the predicted classes in the habermans_survival_test_pred vector match up with the known values in the habermans_survival_test_labels vector.
+To do this, we can use the CrossTable() function in the gmodels. After using library(gmodels) command,we can create a cross tabulation indicating the agreement between the two vectors. Specifying prop.chisq = FALSE will remove the unnecessary chi-square values from the output.
+
+## We can split the results of CrossTable() into 4 values:
+
+1.The top-left cell indicates the true negative results----69 of 100values were patients who were alive for 5 years or longer after the surgery and k-NN correctly identified it.
+
+2.The bottom-right cell indicates the true positive results---7 of 100 values were patients who died within 5 years of the surgery and k-NN correctly identified it.
+
+The cells falling on the other diagonal contain counts of examples where the k-NN
+approach disagreed with the true label.
+
+3.The lower-left cell are false negative results , in this case ,k-NN predicted 18 of the 100 observations as Alive but they were Dead.
+
+4.The top-right cell would contain the false positive results and K-NN predicted 6 out of the 100 observations as Dead even though they are alive .
+
+## Using confusion matrices to measure performance
+With the 2 x 2 confusion matrix, we can formalize our definition of prediction
+accuracy  as:
+Accuracy =TP+TN/TP+TN+FP+FN;
+Error rate =FP+FN/TP+TN+FP+FN=1-Accuracy;
+
+**result**
+By using these two formulas ,we can calculate our model developed performance :
+Accuracy = 69+7/69+7+18+6 = 0.76
+Error rate = 1-0.76 = 0.24;
+
+A total of  24 out of 100, or 24 percent of Survival.status were incorrectly classified by the k-NN approach. While 76 percent accuracy seems impressive .But we might try another iteration of the model to see whether we can improve the
+performance and reduce the number of values that have been incorrectly classified,
+particularly because the errors were dangerous false negatives.
+
+## Step 5: Improving model performance ----
+We will attempt two simple variations on our previous classifier. First, we will
+employ an alternative method for rescaling our numeric features. Second, we will try several different values for k.
+
+##Transformation - z-score standardization
+
+Although normalization is traditionally used for k-NN classification, it may not always be the most appropriate way to rescale features. Since the z-score standardized values have no predefined minimum and maximum, extreme values are not compressed towards the center.
+
+# use the scale() function to z-score standardize a data frame
+```{r}
+habermans_survival_z <- as.data.frame(scale(habermans_survival[-4]))
+```
+
+Instead of using transformation for normalizing the dataset, z-score standardization can be used to allow the outliers to be weighted heavily in the distance calculation.
+Our goal is to standardize our dataset by using scale function .
+Our command rescales all the features, with the exception of survivalstatus and stores the result as thehabermans_survival _z data frame. The _z suffix is a reminder that the values were z-score transformed.
+
+
+# confirm that the transformation was applied correctly
+```{r}
+summary(habermans_survival_z$Operation.year)
+
+```
+To confirm that the transformation was applied correctly, we looked at the
+summary statistics of Operarion.year .The mean of a z-score standardized variable should always be zero, and the range should be fairly compact. A z-score greater than 3 or less than -3 indicates an extremely rare value.In our summarized data there is no value greater than 3 or less than 3 ,so we do not have to worry about an extermely value .
+
+# create training and test datasets
+```{r}
+habermans_survival_train <-habermans_survival_z[1:206, ]
+habermans_survival_test <- habermans_survival_z[207:306, ]
+habermans_survival_train_labels <- habermans_survival[1:206, 4]
+habermans_survival_test_labels <- habermans_survival[207:306, 4]
+```
+
+As we had done earlier, we need to divide the data into training and test sets, and
+then classify the test instances using the knn() function.
+
+# re-classify test cases
+# Create the cross tabulation of predicted vs. actual
+```{r}
+habermans_survival_test_pred <- knn(train = habermans_survival_train, test = habermans_survival_test,
+                      cl = habermans_survival_train_labels, k = 13)
+
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred,
+           prop.chisq = FALSE)
+```
+
+**RESULT**By using these two formulas ,we can calculate our model developed performance :
+Accuracy = 69+8/69+8+17+6 = 0.77
+Error rate = 1-0.77 = 0.23;
+After applying the knn ()function to this newly standardized data, the accuracy increased to 77%, hence this clearly is  a little bit  better model than what I was created earlier.
+
+
+Another method that can be followed to be able to better the model is by applying various k values, the following are the results of trying out multiple k values.
+
+# try several different values of k
+```{r}
+
+habermans_survival_train <- habermans_survival_n[1:206, ]
+habermans_survival_test <- habermans_survival_n[207:306, ]
+habermans_survival_test_pred <- knn(train = habermans_survival_train, test = habermans_survival_test, cl = habermans_survival_train_labels, k=1)
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred, prop.chisq=FALSE)
+
+```
+
+**Result of trying different k values**
+##k=1
+Using the k value as 1 avoided some of the false negatives at the cost of adding false positives.So I  used k value as 1 to improve my dataset .after using these values ,I obtained followed accuracy and error rate :
+Accuracy = 66+9/66+9+16+9 = 0.75
+Error rate = 1-0.75 = 0.25;
+accuracy rate 75% and error rate 25 % .
+
+
+##k=5
+```{r}
+habermans_survival_train <- habermans_survival_n[1:206, ]
+habermans_survival_test <- habermans_survival_n[207:306, ]
+habermans_survival_test_pred <- knn(train = habermans_survival_train, test = habermans_survival_test, cl = habermans_survival_train_labels, k=5)
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred, prop.chisq=FALSE)
+
+```
+Using k=5 ,the accuracy and error rate are :
+Accuracy = 68+8/68+8+17+7 = 0.76
+Error rate = 1-0.76 = 0.24;
+accuracy rate 76% and error rate 24 % .
+
+##k=11
+```{r}
+habermans_survival_train <- habermans_survival_n[1:206, ]
+habermans_survival_test <- habermans_survival_n[207:306, ]
+habermans_survival_test_pred <- knn(train = habermans_survival_train, test = habermans_survival_test, cl = habermans_survival_train_labels, k=11)
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred, prop.chisq=FALSE)
+
+```
+
+Using k=11 ,the accuracy and error rate are :
+Accuracy = 69+6/69+6+19+6 = 0.75
+Error rate = 1-0.75 = 0.25;
+accuracy rate 75% and error rate 25% .
+
+##Using k=15
+```{r}
+habermans_survival_train <- habermans_survival_n[1:206, ]
+habermans_survival_test <- habermans_survival_n[207:306, ]
+habermans_survival_test_pred <- knn(train = habermans_survival_train, test = habermans_survival_test, cl = habermans_survival_train_labels, k=15)
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred, prop.chisq=FALSE)
+
+```
+
+Using k=15 ,the accuracy and error rate are :
+Accuracy = 70+6 /70+6+19+5 = 0.76
+Error rate = 1-0.76 = 0.24;
+accuracy rate 76% and error rate 24 % .
+
+##Using k=21
+```{r}
+habermans_survival_train <- habermans_survival_n[1:206, ]
+habermans_survival_test <- habermans_survival_n[207:306, ]
+habermans_survival_test_pred <- knn(train = habermans_survival_train, test = habermans_survival_test, cl = habermans_survival_train_labels, k=21)
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred, prop.chisq=FALSE)
+
+```
+Using k=21 ,the accuracy and error rate are :
+Accuracy = 72+5/72+5+20+3 = 0.77
+Error rate = 1-0.77 = 0.23;
+accuracy rate 77% and error rate 23 % .
+
+##Using k=27
+```{r}
+habermans_survival_train <- habermans_survival_n[1:206, ]
+habermans_survival_test <- habermans_survival_n[207:306, ]
+habermans_survival_test_pred <- knn(train = habermans_survival_train, test = habermans_survival_test, cl = habermans_survival_train_labels, k=27)
+CrossTable(x = habermans_survival_test_labels, y = habermans_survival_test_pred, prop.chisq=FALSE)
+
+```
+Using k=27 ,the accuracy and error rate are :
+Accuracy = 72+3/72+3+22+3 = 0.75
+Error rate = 1-0.75 = 0.25;
+accuracy rate 75% and error rate 25 % .
+
+
+**Conclusion**
+Hence, we conclude the model with k as 21 which correctly identified whether the survival status  was alive or dead as accuracy rate of 77% .
+
+In spite of the fact that k-NN is a very simple algorithm, it is capable of tackling
+extremely complex tasks,such as identification of different status or cancerous masses as I learned from the book .The k-NN algorithm applied to the Haberman's Surgical Survival Data could classify the test data only with a 23% accuracy even after trying multiple k values and different transformation methods.
+
+
+
